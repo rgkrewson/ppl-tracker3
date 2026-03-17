@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="PPL Tracker" />
+  <meta name="theme-color" content="#0C0F14" />
+  <title>PPL Tracker</title>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.12.7/Recharts.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body { background: #0C0F14; font-family: 'Outfit', -apple-system, sans-serif; }
+    input, select, button { font-family: inherit; }
+    input[type="number"]::-webkit-inner-spin-button,
+    input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    input[type="number"] { -moz-appearance: textfield; }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #0C0F14; }
+    ::-webkit-scrollbar-thumb { background: #1E2430; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect, useCallback, useRef } = React;
+    const { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, CartesianGrid, PieChart, Pie, Cell } = Recharts;
+
+    const DAYS = ["Push A", "Pull A", "Legs A", "Push B", "Pull B", "Legs B"];
+    const EXERCISES = {
+      "Push A": ["Barbell Bench Press", "Incline Dumbbell Press", "Cable Flyes", "Overhead Press", "Lateral Raises (Cable)", "Tricep Dips", "Overhead Tricep Extension"],
+      "Pull A": ["Conventional Deadlift", "Weighted Pull-ups", "Barbell Row", "Seated Cable Row", "Face Pulls", "Barbell Curl", "Hammer Curls"],
+      "Legs A": ["Barbell Back Squat", "Romanian Deadlift", "Bulgarian Split Squat", "Leg Press", "Leg Curl (Lying)", "Standing Calf Raise", "Hanging Leg Raise"],
+      "Push B": ["Incline Barbell Press", "Dumbbell Bench Press", "Pec Deck / Machine Fly", "Seated Dumbbell Press", "Rear Delt Fly (Cable)", "Close-Grip Bench Press", "Cable Pushdown"],
+      "Pull B": ["Lat Pulldown (Wide)", "T-Bar Row", "Single Arm DB Row", "Straight Arm Pulldown", "Shrugs (Dumbbell)", "Incline Dumbbell Curl", "Preacher Curl"],
+      "Legs B": ["Front Squat", "Hip Thrust (Barbell)", "Walking Lunges", "Leg Extension", "Nordic Hamstring Curl", "Seated Calf Raise", "Cable Woodchop"],
+    };
+
+    const PRESET_FOODS = [
+      { name: "Chicken Breast (6oz)", cal: 280, protein: 53, carbs: 0, fat: 6 },
+      { name: "Brown Rice (1 cup)", cal: 215, protein: 5, carbs: 45, fat: 2 },
+      { name: "Eggs (2 large)", cal: 140, protein: 12, carbs: 1, fat: 10 },
+      { name: "Greek Yogurt (1 cup)", cal: 130, protein: 22, carbs: 8, fat: 0 },
+      { name: "Whey Protein Shake", cal: 120, protein: 25, carbs: 3, fat: 1 },
+      { name: "Banana", cal: 105, protein: 1, carbs: 27, fat: 0 },
+      { name: "Oatmeal (1 cup)", cal: 300, protein: 10, carbs: 54, fat: 5 },
+      { name: "Salmon (6oz)", cal: 350, protein: 34, carbs: 0, fat: 22 },
+      { name: "Sweet Potato (medium)", cal: 103, protein: 2, carbs: 24, fat: 0 },
+      { name: "Almonds (1oz)", cal: 164, protein: 6, carbs: 6, fat: 14 },
+      { name: "Avocado (half)", cal: 160, protein: 2, carbs: 9, fat: 15 },
+      { name: "Ground Turkey (6oz)", cal: 250, protein: 42, carbs: 0, fat: 9 },
+      { name: "Broccoli (1 cup)", cal: 55, protein: 4, carbs: 11, fat: 1 },
+      { name: "Whole Wheat Bread (2 slices)", cal: 180, protein: 8, carbs: 34, fat: 3 },
+      { name: "Peanut Butter (2 tbsp)", cal: 190, protein: 7, carbs: 7, fat: 16 },
+    ];
+
+    const TARGETS = { cal: 2350, protein: 165, carbs: 250, fat: 58 };
+
+    const C = {
+      bg: "#0C0F14", card: "#141820", border: "#1E2430",
+      accent: "#4F8EF7", accentDim: "#2A4A8A",
+      green: "#34D399", red: "#F87171", orange: "#FB923C",
+      yellow: "#FBBF24", purple: "#A78BFA",
+      text: "#E8ECF1", textDim: "#6B7A90", textMid: "#9AA5B4",
+    };
+    const PIE_COLORS = [C.accent, C.green, C.orange];
+    const getToday = () => new Date().toISOString().split("T")[0];
+
+    function load(key, fb) { try { const r = localStorage.getItem(key); return r ? JSON.parse(r) : fb; } catch { return fb; } }
+    function save(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch(e) { console.error(e); } }
+
+    function App() {
+      const [tab, setTab] = useState("lift");
+      const [liftData, setLiftData] = useState(() => load("ppl-lift", {}));
+      const [nutData, setNutData] = useState(() => load("ppl-nut", {}));
+      const [bwData, setBwData] = useState(() => load("ppl-bw", {}));
+      const [selDay, setSelDay] = useState(DAYS[0]);
+      const [liftDate, setLiftDate] = useState(getToday());
+      const [nutDate, setNutDate] = useState(getToday());
+      const [curSets, setCurSets] = useState({});
+      const [showAdd, setShowAdd] = useState(false);
+      const [custFood, setCustFood] = useState({ name: "", cal: "", protein: "", carbs: "", fat: "" });
+      const [bw, setBw] = useState("");
+      const [saving, setSaving] = useState(false);
+      const timer = useRef(null);
+
+      const saveAll = useCallback((l, n, b) => {
+        if (timer.current) clearTimeout(timer.current);
+        timer.current = setTimeout(() => {
+          setSaving(true);
+          save("ppl-lift", l); save("ppl-nut", n); save("ppl-bw", b);
+          setTimeout(() => setSaving(false), 300);
+        }, 400);
+      }, []);
+
+      const updLift = (d) => { setLiftData(d); saveAll(d, nutData, bwData); };
+      const updNut = (d) => { setNutData(d); saveAll(liftData, d, bwData); };
+      const updBw = (d) => { setBwData(d); saveAll(liftData, nutData, d); };
+
+      const lk = `${liftDate}|${selDay}`;
+      const ts = liftData[lk] || {};
+
+      const addSet = (ex) => {
+        const w = parseFloat(curSets[`${ex}-w`]) || 0;
+        const r = parseInt(curSets[`${ex}-r`]) || 0;
+        if (w === 0 && r === 0) return;
+        const existing = ts[ex] || [];
+        updLift({ ...liftData, [lk]: { ...ts, [ex]: [...existing, { weight: w, reps: r }] } });
+        setCurSets({ ...curSets, [`${ex}-w`]: "", [`${ex}-r`]: "" });
+      };
+
+      const rmSet = (ex, idx) => {
+        const s = [...(ts[ex] || [])]; s.splice(idx, 1);
+        updLift({ ...liftData, [lk]: { ...ts, [ex]: s } });
+      };
+
+      const meals = nutData[nutDate] || [];
+      const totals = meals.reduce((a, m) => ({ cal: a.cal + m.cal, protein: a.protein + m.protein, carbs: a.carbs + m.carbs, fat: a.fat + m.fat }), { cal: 0, protein: 0, carbs: 0, fat: 0 });
+
+      const addFood = (f) => updNut({ ...nutData, [nutDate]: [...meals, { ...f }] });
+
+      const addCustom = () => {
+        const f = { name: custFood.name || "Custom", cal: parseInt(custFood.cal) || 0, protein: parseInt(custFood.protein) || 0, carbs: parseInt(custFood.carbs) || 0, fat: parseInt(custFood.fat) || 0 };
+        if (f.cal === 0) return;
+        updNut({ ...nutData, [nutDate]: [...meals, f] });
+        setCustFood({ name: "", cal: "", protein: "", carbs: "", fat: "" });
+        setShowAdd(false);
+      };
+
+      const rmFood = (i) => { const m = [...meals]; m.splice(i, 1); updNut({ ...nutData, [nutDate]: m }); };
+
+      const logBw = () => { const w = parseFloat(bw); if (!w) return; updBw({ ...bwData, [nutDate]: w }); setBw(""); };
+
+      const getExHist = (ex) => {
+        const e = [];
+        Object.entries(liftData).forEach(([k, exs]) => {
+          const [d] = k.split("|");
+          if (exs[ex]?.length > 0) e.push({ date: d.slice(5), weight: Math.max(...exs[ex].map(s => s.weight)) });
+        });
+        return e.sort((a, b) => a.date.localeCompare(b.date)).slice(-14);
+      };
+
+      const getNutHist = () => Object.entries(nutData).map(([d, ms]) => {
+        const t = ms.reduce((a, m) => ({ cal: a.cal + m.cal, protein: a.protein + m.protein, carbs: a.carbs + m.carbs, fat: a.fat + m.fat }), { cal: 0, protein: 0, carbs: 0, fat: 0 });
+        return { date: d.slice(5), ...t };
+      }).sort((a, b) => a.date.localeCompare(b.date)).slice(-14);
+
+      const getBwHist = () => Object.entries(bwData).map(([d, w]) => ({ date: d.slice(5), weight: w })).sort((a, b) => a.date.localeCompare(b.date)).slice(-20);
+
+      const pctBar = (cur, tgt, col) => (
+        React.createElement("div", { style: { height: 6, background: C.border, borderRadius: 3, overflow: "hidden" } },
+          React.createElement("div", { style: { height: "100%", width: `${Math.min((cur / tgt) * 100, 100)}%`, background: col, borderRadius: 3, transition: "width 0.4s ease" } }))
+      );
+
+      const ttStyle = { background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontSize: 12 };
+
+      const clearAll = () => {
+        if (!confirm("Clear all data? This cannot be undone.")) return;
+        setLiftData({}); setNutData({}); setBwData({});
+        localStorage.removeItem("ppl-lift"); localStorage.removeItem("ppl-nut"); localStorage.removeItem("ppl-bw");
+      };
+
+      const mono = "'JetBrains Mono', monospace";
+      const sans = "'Outfit', sans-serif";
+      const iStyle = (w) => ({ background: C.bg, border: `1px solid ${C.border}`, color: C.text, padding: "8px 10px", borderRadius: 6, width: w, fontSize: 14, fontFamily: mono, outline: "none", textAlign: "center" });
+
+      return React.createElement("div", { style: { minHeight: "100dvh", background: C.bg, color: C.text, fontFamily: sans, paddingBottom: "env(safe-area-inset-bottom, 40px)" } },
+
+        // HEADER
+        React.createElement("div", { style: { background: `linear-gradient(135deg, ${C.bg}, #111622)`, borderBottom: `1px solid ${C.border}`, padding: `calc(env(safe-area-inset-top, 12px) + 12px) 24px 16px`, position: "sticky", top: 0, zIndex: 100, backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)" } },
+          React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", maxWidth: 800, margin: "0 auto" } },
+            React.createElement("div", null,
+              React.createElement("div", { style: { fontSize: 22, fontWeight: 700, letterSpacing: -0.5 } },
+                React.createElement("span", { style: { color: C.accent } }, "PPL"), " Tracker"),
+              React.createElement("div", { style: { fontSize: 11, color: C.textDim, fontFamily: mono, letterSpacing: 1, marginTop: 2 } },
+                "PUSH / PULL / LEGS", saving && React.createElement("span", { style: { color: C.yellow, marginLeft: 8 } }, "SAVING..."))),
+            React.createElement("button", { onClick: clearAll, style: { background: "none", border: `1px solid ${C.border}`, color: C.textDim, fontSize: 11, padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontFamily: mono } }, "RESET")),
+          // TABS
+          React.createElement("div", { style: { display: "flex", gap: 4, maxWidth: 800, margin: "14px auto 0", background: C.card, borderRadius: 10, padding: 3 } },
+            [["lift", "LIFTING"], ["nutrition", "NUTRITION"], ["stats", "PROGRESS"]].map(([k, l]) =>
+              React.createElement("button", { key: k, onClick: () => setTab(k), style: { flex: 1, padding: "10px 0", border: "none", borderRadius: 8, cursor: "pointer", background: tab === k ? C.accent : "transparent", color: tab === k ? "#fff" : C.textDim, fontSize: 12, fontWeight: 600, letterSpacing: 1.5, fontFamily: mono, transition: "all 0.2s" } }, l)))),
+
+        React.createElement("div", { style: { maxWidth: 800, margin: "0 auto", padding: "20px 16px" } },
+
+          // LIFTING TAB
+          tab === "lift" && React.createElement("div", null,
+            React.createElement("div", { style: { display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" } },
+              React.createElement("input", { type: "date", value: liftDate, onChange: e => setLiftDate(e.target.value), style: { background: C.card, border: `1px solid ${C.border}`, color: C.text, padding: "10px 14px", borderRadius: 8, fontSize: 14, fontFamily: mono, outline: "none", colorScheme: "dark" } }),
+              React.createElement("select", { value: selDay, onChange: e => setSelDay(e.target.value), style: { background: C.card, border: `1px solid ${C.border}`, color: C.text, padding: "10px 14px", borderRadius: 8, fontSize: 14, fontFamily: sans, fontWeight: 500, outline: "none", flex: 1, minWidth: 140, colorScheme: "dark" } },
+                DAYS.map(d => React.createElement("option", { key: d, value: d }, d)))),
+            EXERCISES[selDay].map(ex => {
+              const sets = ts[ex] || [];
+              const vol = sets.reduce((a, s) => a + s.weight * s.reps, 0);
+              return React.createElement("div", { key: ex, style: { background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, marginBottom: 10 } },
+                React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: sets.length > 0 ? 10 : 0 } },
+                  React.createElement("div", { style: { fontSize: 15, fontWeight: 600 } }, ex),
+                  vol > 0 && React.createElement("div", { style: { fontSize: 11, color: C.textDim, fontFamily: mono } }, vol.toLocaleString() + " lbs vol")),
+                sets.length > 0 && React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 } },
+                  sets.map((s, i) => React.createElement("div", { key: i, onClick: () => rmSet(ex, i), style: { background: C.accentDim + "40", border: `1px solid ${C.accentDim}`, borderRadius: 6, padding: "4px 10px", fontSize: 13, fontFamily: mono, cursor: "pointer", color: C.accent } }, `${s.weight}×${s.reps}`))),
+                React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center" } },
+                  React.createElement("input", { type: "number", inputMode: "decimal", placeholder: "lbs", value: curSets[`${ex}-w`] || "", onChange: e => setCurSets({ ...curSets, [`${ex}-w`]: e.target.value }), onKeyDown: e => e.key === "Enter" && addSet(ex), style: iStyle(70) }),
+                  React.createElement("span", { style: { color: C.textDim, fontSize: 13 } }, "×"),
+                  React.createElement("input", { type: "number", inputMode: "numeric", placeholder: "reps", value: curSets[`${ex}-r`] || "", onChange: e => setCurSets({ ...curSets, [`${ex}-r`]: e.target.value }), onKeyDown: e => e.key === "Enter" && addSet(ex), style: iStyle(70) }),
+                  React.createElement("button", { onClick: () => addSet(ex), style: { background: C.accent, border: "none", color: "#fff", padding: "8px 16px", borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: mono, letterSpacing: 0.5 } }, "+ SET")));
+            })),
+
+          // NUTRITION TAB
+          tab === "nutrition" && React.createElement("div", null,
+            React.createElement("div", { style: { display: "flex", gap: 10, marginBottom: 20, alignItems: "center", flexWrap: "wrap" } },
+              React.createElement("input", { type: "date", value: nutDate, onChange: e => setNutDate(e.target.value), style: { background: C.card, border: `1px solid ${C.border}`, color: C.text, padding: "10px 14px", borderRadius: 8, fontSize: 14, fontFamily: mono, outline: "none", colorScheme: "dark" } }),
+              React.createElement("div", { style: { display: "flex", gap: 6, alignItems: "center", marginLeft: "auto" } },
+                React.createElement("input", { type: "number", inputMode: "decimal", placeholder: "Weight (lbs)", value: bw, onChange: e => setBw(e.target.value), onKeyDown: e => e.key === "Enter" && logBw(), style: { background: C.card, border: `1px solid ${C.border}`, color: C.text, padding: "8px 10px", borderRadius: 6, width: 110, fontSize: 13, fontFamily: mono, outline: "none" } }),
+                React.createElement("button", { onClick: logBw, style: { background: C.purple, border: "none", color: "#fff", padding: "8px 12px", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer" } }, "LOG"))),
+
+            // Macro cards
+            React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginBottom: 20 } },
+              [{ label: "Calories", val: totals.cal, target: TARGETS.cal, unit: "", color: C.yellow },
+               { label: "Protein", val: totals.protein, target: TARGETS.protein, unit: "g", color: C.accent },
+               { label: "Carbs", val: totals.carbs, target: TARGETS.carbs, unit: "g", color: C.green },
+               { label: "Fat", val: totals.fat, target: TARGETS.fat, unit: "g", color: C.orange }
+              ].map(m => React.createElement("div", { key: m.label, style: { background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 14px" } },
+                React.createElement("div", { style: { fontSize: 10, color: C.textDim, fontFamily: mono, letterSpacing: 1, marginBottom: 4 } }, m.label.toUpperCase()),
+                React.createElement("div", { style: { fontSize: 20, fontWeight: 700, color: m.val > m.target ? C.red : m.color } }, m.val + m.unit),
+                React.createElement("div", { style: { fontSize: 11, color: C.textDim, marginBottom: 6 } }, "/ " + m.target + m.unit),
+                pctBar(m.val, m.target, m.color)))),
+
+            // Pie chart
+            totals.cal > 0 && React.createElement("div", { style: { background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "center", gap: 20, flexWrap: "wrap" } },
+              React.createElement(ResponsiveContainer, { width: 160, height: 160 },
+                React.createElement(PieChart, null,
+                  React.createElement(Pie, { data: [
+                    { name: "Protein", value: totals.protein * 4, grams: totals.protein },
+                    { name: "Carbs", value: totals.carbs * 4, grams: totals.carbs },
+                    { name: "Fat", value: totals.fat * 9, grams: totals.fat }
+                  ].filter(d => d.value > 0), cx: "50%", cy: "50%", innerRadius: 45, outerRadius: 70, paddingAngle: 3, dataKey: "value", stroke: "none" },
+                    [C.accent, C.green, C.orange].map((c, i) => React.createElement(Cell, { key: i, fill: c }))),
+                  React.createElement(Tooltip, { formatter: (v, n, p) => [p.payload.grams + "g", p.payload.name], contentStyle: ttStyle }))),
+              React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 6 } },
+                [{ l: "Protein", c: C.accent, p: Math.round((totals.protein * 4 / Math.max(totals.cal, 1)) * 100) },
+                 { l: "Carbs", c: C.green, p: Math.round((totals.carbs * 4 / Math.max(totals.cal, 1)) * 100) },
+                 { l: "Fat", c: C.orange, p: Math.round((totals.fat * 9 / Math.max(totals.cal, 1)) * 100) }
+                ].map(m => React.createElement("div", { key: m.l, style: { display: "flex", alignItems: "center", gap: 8, fontSize: 13 } },
+                  React.createElement("div", { style: { width: 10, height: 10, borderRadius: "50%", background: m.c } }),
+                  React.createElement("span", { style: { color: C.textMid } }, m.l),
+                  React.createElement("span", { style: { fontWeight: 600, fontFamily: mono, color: m.c } }, m.p + "%"))))),
+
+            // Quick add
+            React.createElement("div", { style: { marginBottom: 16 } },
+              React.createElement("div", { style: { fontSize: 12, color: C.textDim, fontFamily: mono, letterSpacing: 1, marginBottom: 8 } }, "QUICK ADD"),
+              React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap" } },
+                PRESET_FOODS.map(f => React.createElement("button", { key: f.name, onClick: () => addFood(f), style: { background: C.card, border: `1px solid ${C.border}`, color: C.text, padding: "6px 12px", borderRadius: 20, fontSize: 12, cursor: "pointer", fontFamily: sans } }, f.name, " ", React.createElement("span", { style: { color: C.textDim } }, f.cal))),
+                React.createElement("button", { onClick: () => setShowAdd(!showAdd), style: { background: C.accent, border: "none", color: "#fff", padding: "6px 14px", borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: "pointer" } }, "+ Custom"))),
+
+            // Custom food
+            showAdd && React.createElement("div", { style: { background: C.card, border: `1px solid ${C.accent}40`, borderRadius: 12, padding: 16, marginBottom: 16 } },
+              React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "end" } },
+                [{ k: "name", p: "Food name", w: 140 }, { k: "cal", p: "Cal", w: 60 }, { k: "protein", p: "Prot(g)", w: 70 }, { k: "carbs", p: "Carb(g)", w: 70 }, { k: "fat", p: "Fat(g)", w: 60 }].map(f =>
+                  React.createElement("div", { key: f.k },
+                    React.createElement("div", { style: { fontSize: 10, color: C.textDim, marginBottom: 4, fontFamily: mono } }, f.p),
+                    React.createElement("input", { type: f.k === "name" ? "text" : "number", inputMode: f.k === "name" ? "text" : "numeric", value: custFood[f.k], onChange: e => setCustFood({ ...custFood, [f.k]: e.target.value }), onKeyDown: e => e.key === "Enter" && addCustom(), style: { background: C.bg, border: `1px solid ${C.border}`, color: C.text, padding: "8px 10px", borderRadius: 6, width: f.w, fontSize: 13, fontFamily: mono, outline: "none" } }))),
+                React.createElement("button", { onClick: addCustom, style: { background: C.green, border: "none", color: C.bg, padding: "8px 16px", borderRadius: 6, fontSize: 13, fontWeight: 700, cursor: "pointer", height: 36 } }, "ADD"))),
+
+            // Food log
+            meals.length > 0 && React.createElement("div", null,
+              React.createElement("div", { style: { fontSize: 12, color: C.textDim, fontFamily: mono, letterSpacing: 1, marginBottom: 8 } }, "TODAY'S LOG"),
+              meals.map((m, i) => React.createElement("div", { key: i, style: { display: "flex", justifyContent: "space-between", alignItems: "center", background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", marginBottom: 4 } },
+                React.createElement("div", null,
+                  React.createElement("div", { style: { fontSize: 14, fontWeight: 500 } }, m.name),
+                  React.createElement("div", { style: { fontSize: 11, color: C.textDim, fontFamily: mono } }, `${m.cal} cal · ${m.protein}p · ${m.carbs}c · ${m.fat}f`)),
+                React.createElement("button", { onClick: () => rmFood(i), style: { background: "none", border: "none", color: C.textDim, cursor: "pointer", fontSize: 18, padding: "4px 8px" } }, "×"))))),
+
+          // PROGRESS TAB
+          tab === "stats" && React.createElement("div", null,
+            getBwHist().length > 0 && React.createElement("div", { style: { background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 20, marginBottom: 16 } },
+              React.createElement("div", { style: { fontSize: 14, fontWeight: 600, marginBottom: 12 } }, "Body Weight Trend"),
+              React.createElement(ResponsiveContainer, { width: "100%", height: 180 },
+                React.createElement(LineChart, { data: getBwHist() },
+                  React.createElement(CartesianGrid, { stroke: C.border, strokeDasharray: "3 3" }),
+                  React.createElement(XAxis, { dataKey: "date", tick: { fill: C.textDim, fontSize: 11 }, stroke: C.border }),
+                  React.createElement(YAxis, { domain: ["dataMin - 2", "dataMax + 2"], tick: { fill: C.textDim, fontSize: 11 }, stroke: C.border }),
+                  React.createElement(Tooltip, { contentStyle: ttStyle }),
+                  React.createElement(Line, { type: "monotone", dataKey: "weight", stroke: C.purple, strokeWidth: 2, dot: { r: 3, fill: C.purple } })))),
+
+            getNutHist().length > 0 && React.createElement("div", { style: { background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 20, marginBottom: 16 } },
+              React.createElement("div", { style: { fontSize: 14, fontWeight: 600, marginBottom: 12 } }, "Daily Calories"),
+              React.createElement(ResponsiveContainer, { width: "100%", height: 180 },
+                React.createElement(BarChart, { data: getNutHist() },
+                  React.createElement(CartesianGrid, { stroke: C.border, strokeDasharray: "3 3" }),
+                  React.createElement(XAxis, { dataKey: "date", tick: { fill: C.textDim, fontSize: 11 }, stroke: C.border }),
+                  React.createElement(YAxis, { tick: { fill: C.textDim, fontSize: 11 }, stroke: C.border }),
+                  React.createElement(Tooltip, { contentStyle: ttStyle }),
+                  React.createElement(Bar, { dataKey: "cal", fill: C.yellow, radius: [4, 4, 0, 0], name: "Calories" })))),
+
+            getNutHist().length > 0 && React.createElement("div", { style: { background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 20, marginBottom: 16 } },
+              React.createElement("div", { style: { fontSize: 14, fontWeight: 600, marginBottom: 12 } }, "Daily Protein"),
+              React.createElement(ResponsiveContainer, { width: "100%", height: 180 },
+                React.createElement(BarChart, { data: getNutHist() },
+                  React.createElement(CartesianGrid, { stroke: C.border, strokeDasharray: "3 3" }),
+                  React.createElement(XAxis, { dataKey: "date", tick: { fill: C.textDim, fontSize: 11 }, stroke: C.border }),
+                  React.createElement(YAxis, { tick: { fill: C.textDim, fontSize: 11 }, stroke: C.border }),
+                  React.createElement(Tooltip, { contentStyle: ttStyle }),
+                  React.createElement(Bar, { dataKey: "protein", fill: C.accent, radius: [4, 4, 0, 0], name: "Protein (g)" })))),
+
+            React.createElement("div", { style: { fontSize: 12, color: C.textDim, fontFamily: mono, letterSpacing: 1, marginBottom: 10, marginTop: 8 } }, "LIFT PROGRESS (Best Weight Per Session)"),
+            ["Barbell Bench Press", "Conventional Deadlift", "Barbell Back Squat", "Overhead Press", "Barbell Row", "Weighted Pull-ups"].map(ex => {
+              const d = getExHist(ex);
+              if (d.length === 0) return null;
+              return React.createElement("div", { key: ex, style: { background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 20, marginBottom: 10 } },
+                React.createElement("div", { style: { fontSize: 14, fontWeight: 600, marginBottom: 10 } }, ex),
+                React.createElement(ResponsiveContainer, { width: "100%", height: 150 },
+                  React.createElement(LineChart, { data: d },
+                    React.createElement(CartesianGrid, { stroke: C.border, strokeDasharray: "3 3" }),
+                    React.createElement(XAxis, { dataKey: "date", tick: { fill: C.textDim, fontSize: 10 }, stroke: C.border }),
+                    React.createElement(YAxis, { tick: { fill: C.textDim, fontSize: 10 }, stroke: C.border }),
+                    React.createElement(Tooltip, { contentStyle: ttStyle, formatter: v => [v + " lbs", "Best"] }),
+                    React.createElement(Line, { type: "monotone", dataKey: "weight", stroke: C.green, strokeWidth: 2, dot: { r: 3, fill: C.green } }))));
+            }),
+
+            Object.keys(liftData).length === 0 && Object.keys(nutData).length === 0 &&
+              React.createElement("div", { style: { textAlign: "center", color: C.textDim, padding: "60px 20px", fontSize: 14 } }, "Log some workouts and meals to see your progress charts here.")))
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
+  </script>
+</body>
+</html>
